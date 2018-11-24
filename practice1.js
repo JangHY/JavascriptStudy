@@ -8,6 +8,8 @@ var fs = require('fs');//파일업로드용
 var cors = require('cors');//다중 서버 접속 지원
 var MongoClient = require('mongodb').MongoClient;
 var mongoose = require('mongoose');
+var mongodb = require('mongodb');
+var crypto = require('crypto');
 
 var database;
 var UserSchema;
@@ -25,14 +27,16 @@ function connectDB(){
     database.on('open',function(){
         console.log('데이터베이스에 연결되었습니다.:'+databaseUrl);
 
-        UserSchema = mongoose.Schema({
-            id: {type:String, require:true, unique:true},
-            password: {type:String, require:true},
-            name:{type:String, index:'hashed'},
-            age: {type:Number, 'default':-1},
-            created_at:{type:Date, index:{unique:false},'default':Date.now},
-            updated_at:{type:Date, index:{unique:false},'default':Date.now}
-        });
+        createUserSchema();
+
+        // UserSchema = mongoose.Schema({
+        //     id: {type:String, require:true, unique:true},
+        //     password: {type:String, require:true},
+        //     name:{type:String, index:'hashed'},
+        //     age: {type:Number, 'default':-1},
+        //     created_at:{type:Date, index:{unique:false},'default':Date.now},
+        //     updated_at:{type:Date, index:{unique:false},'default':Date.now}
+        // });
 
         // UserSchema.static('findById', function(id, callback){
         //     return this.find({id:id},callback);
@@ -43,48 +47,144 @@ function connectDB(){
         // })
 
 
-        console.log('UserSchema 정의함.');
+        // console.log('UserSchema 정의함.');
 
-        UserModel = mongoose.model("users",UserSchema);
-        console.log('UserModel 정의함');
+        // UserModel = mongoose.model("users",UserSchema);
+        // console.log('UserModel 정의함');
     });
 
     database.on('disconnected',function(){
         console.log("연결이 끊어졌습니다. 5초 후 다시 연결합니다.");
         setInterval(connectDB, 5000);
-    })
-
-
-    // MongoClient.connect(databaseUrl, function(err, db){
-    //     if(err) throw err;
-
-    //     console.log('데이터 베이스에 연결되었습니다. : '+databaseUrl);
-
-    //     database = db.db('local');//mongoDB 3.0 이상부터 이름 명시 필요
-    // });
+    });
 }
+
+function createUserSchema(){
+    UserSchema = mongoose.Schema({
+        id: {type:String, require:true, unique:true, 'default':' '},
+        hashed_password: {type:String, require:true, 'default':' '},
+        salt :{type: String, require: true}, //password 암호화 key 저장
+        name:{type:String, index:'hashed', 'default':' '},
+        age: {type:Number, 'default':-1},
+        created_at:{type:Date, index:{unique:false},'default':Date.now},
+        updated_at:{type:Date, index:{unique:false},'default':Date.now}
+    });
+
+    UserSchema.virtual('info').set(function(info){
+        var splitted = info.split(' ');
+        this.id = splitted[0];
+        this.name = splitted[1];
+        console.log('virtual info 설정함 : %s, %s', this.id, this.name);
+    })
+    .get(function(){return this.id+' '+this.name});
+    console.log('UserSchema 정의함.');
+
+    UserSchema.virtual('password').set(function(password){
+        this._password = password;
+        this.salt = this.makeSalt();
+        this.hashed_password = this.encryptPassword(password);
+        console.log('virtual password 호출됨 : '+this.hashed_password);
+    })
+    .get(function(){return this._password});
+
+    UserSchema.method('encryptPassword', function(plainText, inSalt){
+        if(inSalt){
+            return crypto.createHmac('sha1',inSalt).update(plainText).digest('hex');
+        }else{
+            return crypto.createHmac('sha1', this.salt).update(plainText).digest('hex');
+        }
+    });
+
+    UserSchema.method('makeSalt',function(){
+        return Math.round((new Date().valueOf()*Math.random()))+'';
+    });
+
+    UserSchema.method('authenticate', function(plainText, inSalt, hashed_password){
+        if(inSalt){
+            console.log('authenticate 호출됨: : %s -> %s : %s',plainText,this.encryptPassword(plainText,inSalt),hashed_password);
+                return this.encryptPassword(plainText, inSalt) == hashed_password;
+        }
+        else{
+            console.log('authenticate 호출됨: : %s -> %s : %s',plainText,this.encryptPassword(plainText,inSalt),hashed_password);
+            return this.encryptPassword(plainText) == hashed_password;
+        }
+    });
+
+    UserSchema.path('id').validate(function(id){
+        return id.length;
+    },'id 칼럼의 값이 없습니다.');
+
+    UserSchema.path('name').validate(function(name){
+        return name.length;
+    },'name 칼럼의 값이 없습니다.');
+
+    UserModel = mongoose.model("users",UserSchema);
+    console.log("UserModel 정의함");
+}
+
+
 
 var authUser = function(database, id, password, callback){
     console.log('authUser 호출됨 : '+id+", "+password);
 
-    UserModel.find({"id":id,"password":password},function(err,results){
+    UserModel.findById(id, function(err,results){//아이디 확인
         if(err){
-            callback(err,null);
+            callback(err, null);
             return;
         }
-
-        console.log('아이디 [%s], 비밀번호 [%s]로 사용자 검색 결과',id, password);
+        
+        console.log('아이디 [%s]로 사용자 검색 결과',id);
         console.log(results);
 
-        if(results.length>0){
-            console.log('아이디 [%s], 비밀번호 [%s]가 일치하는 사용자 찾음',id, password);
-            callback(null,results);
+        if(results.length > 0){
+            console.log("아이디와 일치하는 사용자 찾음");
+
+            var user = new UserModel({id:id});
+            var authenticated = user.authenticate(password, results[0]._doc.salt, result[0]._doc.hashed_password);
+
+            if(authenticated){
+                console.log('비밀번호 일치함');
+                callback(null, results);
+            }
+            else{
+                console.log('비밀번호 일치하지 않음');
+                callback(null,null);
+            }
+
+
+            // if(results[0]._doc.password == password){ //비밀번호 확인
+            //     console.log("비밀번호 일치함");
+            //     callback(null, results);
+            // }else{
+            //     console.log("비밀번호 일치하지 않음");
+            //     callback(null, null);
+            // }
         }
         else{
-            console.log("일치하는 사용자를 찾지 못함.");
-            callback(null,null);
+            console.log("아이디와 일치하는 사용자를 찾지 못함.");
+            callback(null, null);
         }
-    })
+    });
+
+
+    // UserModel.find({"id":id,"password":password},function(err,results){
+    //     if(err){
+    //         callback(err,null);
+    //         return;
+    //     }
+
+    //     console.log('아이디 [%s], 비밀번호 [%s]로 사용자 검색 결과',id, password);
+    //     console.log(results);
+
+    //     if(results.length>0){
+    //         console.log('아이디 [%s], 비밀번호 [%s]가 일치하는 사용자 찾음',id, password);
+    //         callback(null,results);
+    //     }
+    //     else{
+    //         console.log("일치하는 사용자를 찾지 못함.");
+    //         callback(null,null);
+    //     }
+    // });
 
 
     // var users = database.collection('users');
@@ -185,6 +285,52 @@ var upload = multer({
 
 var router = express.Router();
 
+router.route("/process/listuser").post(function(req,res){
+    console.log("/process/listuser 호출됨.");
+
+    if(database){
+        UserModel.findAll(function(err,results){
+            if(err){
+                console.error("사용자 리스트 조회 중 오류 발생: "+err.stack);
+
+                res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+                res.write('<h2>사용자 리스트 조회 중 오류 발생</h2>');
+                res.write('<p>'+err.stack+'</p>');
+                res.end();
+
+                return;
+            }
+
+            if(results){
+                console.dir(results);
+
+                res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+                res.write('<h2>사용자 리스트</h2>');
+                res.write('<div><ul>');
+
+                for(var i = 0; i < results.length; i++){
+                    var curId = results[i]._doc.id;
+                    var curName = results[i]._doc.name;
+                    res.write('     <li>#'+i+' : '+curId+", "+curName+'</li>');
+                }
+
+                res.write('</ul></div>');
+                res.end();
+            }
+            else{
+                res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+                res.write('<h2>사용자 리스트 조회 실패</h2>');
+                res.end();
+            }
+        });
+    }
+    else{
+        res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+        res.write('<h2>데이터베이스 연결 실패</h2>');
+        res.end();
+    }
+})
+
 router.route('/process/login').post(function(req,res){
     console.log('/process/login 호출됨');
 
@@ -245,6 +391,7 @@ router.route('/process/login').post(function(req,res){
     
 });
 
+
 router.route('/process/logout').get(function(req,res){
     console.log('/process/logout 호출됨');
 
@@ -276,9 +423,6 @@ router.route('/process/adduser').post(function(req, res) {
 			if (err) {throw err;}
 			
             // 결과 객체 확인하여 추가된 데이터 있으면 성공 응답 전송
-            console.log("debug");
-            console.log(result);
-            console.log(result.insertedCount);
             if (result) {
 				console.dir(result);
  

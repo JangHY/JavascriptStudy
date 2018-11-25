@@ -44,7 +44,9 @@ function initRoutes(app, router) {
 	}
 
     // 라우터 객체 등록
-    app.use('/', router);
+	app.use('/', router);
+	
+	return router;
 }
 
 module.exports = route_loader;

@@ -14,47 +14,9 @@ var user = require('./routes/user.js');
 var config = require('./config');
 var route_loader = require('./routes/route_loader.js');
 
-var database;
+var database = require('./database/database.js');;
 var UserSchema;
 var UserModel;
-
-function connectDB(){
-    var databaseUrl = "mongodb://localhost:27017/local";
-
-    console.log('데이터 베이스 연결을 시도합니다.');
-    mongoose.Promise = global.Promise;
-    mongoose.connect(databaseUrl);
-    database = mongoose.connection;
-
-    database.on('error',console.error.bind(console, 'mongoose connection erre'));
-    database.on('open',function(){
-        console.log('데이터베이스에 연결되었습니다.:'+databaseUrl);
-        createUserSchema();
-    });
-
-    database.on('disconnected',function(){
-        console.log("연결이 끊어졌습니다. 5초 후 다시 연결합니다.");
-        setInterval(connectDB, 5000);
-    });
-}
-
-function createUserSchema(){
-
-    //user_schema.js 모듈 불러오기
-    UserSchema = require('./database/user_schema').createSchema(mongoose);
-
-    //UserModel 모델 정의
-    UserModel = mongoose.model("users4",UserSchema);
-    console.log("UserModel 정의함");
-
-    user.init(database, UserSchema, UserModel);
-}
-
-
-
-
-
-
 
 
 var app = express();
@@ -98,26 +60,8 @@ var upload = multer({
     }
 });
 
-var router = express.Router();
 
-// router.route("/process/listuser").post(user.listuser);
-// router.route('/process/login').post(user.login);
-// router.route('/process/logout').get(user.logout);
-// router.route('/process/adduser').post(user.adduser);
-
-route_loader.init(app,router);
-
-
-// router.route('/process/users/:id').get(function(req,res){
-//     console.log('/porcess/users/:id 처리함')
-
-//     var paramId = req.params.id;
-
-//     res.writeHead('200',{'Content-Type':'text/html;charset=utf8'});
-//     res.write('<h1>express에서 응답한 결과</h1>');
-//     res.write('<h1>paramId : '+paramId+' </h1>');
-//     res.end();
-// });
+var router = route_loader.init(app,express.Router());
 
 router.route('/process/showCookie').get(function(req,res){
     console.log('process/showCookie 호출됨');
@@ -211,17 +155,10 @@ var errorHandler = expressErrorHandler({
 app.use(expressErrorHandler.httpError(404));
 app.use(errorHandler);
 
-
-
-
-
-
-
-
 http.createServer(app).listen(app.get('port'),function(){
     console.log('익스프레스 서버 시작 : '+app.get('port'));
-
-    connectDB();
+    database.init(app,config);
+    user.init(database, UserSchema, UserModel);
 });
 
 

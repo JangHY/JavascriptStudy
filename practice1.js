@@ -87,7 +87,7 @@ router.route('/process/product').get(function(req,res){
     if(req.session.user){
         res.redirect('/public/product.html');
     }else{
-        res.redirect('/public/login2.html');
+        res.redirect('/public/login.html');
     }
 });
 

@@ -2,6 +2,7 @@ var database;
 var UserSchema;
 var UserModel;
 
+
 var init = function(db, schema, model){
     console.log('init 호출됨');
 
@@ -32,14 +33,14 @@ var login = function(req,res){
 				res.write('<h1>로그인 성공</h1>');
 				res.write('<div><p>사용자 아이디 : ' + paramId + '</p></div>');
 				res.write('<div><p>사용자 이름 : ' + username + '</p></div>');
-				res.write("<br><br><a href='/public/login2.html'>다시 로그인하기</a>");
+				res.write("<br><br><a href='/public/login.html'>다시 로그인하기</a>");
 				res.end();
 			
 			} else {  // 조회된 레코드가 없는 경우 실패 응답 전송
 				res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
 				res.write('<h1>로그인  실패</h1>');
 				res.write('<div><p>아이디와 패스워드를 다시 확인하십시오.</p></div>');
-				res.write("<br><br><a href='/public/login2.html'>다시 로그인하기</a>");
+				res.write("<br><br><a href='/public/login.html'>다시 로그인하기</a>");
 				res.end();
 			}
 		});
@@ -62,6 +63,38 @@ var adduser = function(req, res) {
     
     // 데이터베이스 객체가 초기화된 경우, addUser 함수 호출하여 사용자 추가
 	if (database) {
+        addUser(database, paramId, paramPassword, paramName, function(err, result) {
+            if (err) {throw err;}
+            
+            // 결과 객체 확인하여 추가된 데이터 있으면 성공 응답 전송
+            if (result) {
+                console.dir(result);
+ 
+                res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+                res.write('<h2>사용자 추가 성공</h2>');
+                res.end();
+            } else {  // 결과 객체가 없으면 실패 응답 전송
+                res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+                res.write('<h2>사용자 추가  실패</h2>');
+                res.end();
+            }
+        });
+	} else {  // 데이터베이스 객체가 초기화되지 않은 경우 실패 응답 전송
+		res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
+		res.write('<h2>데이터베이스 연결 실패</h2>');
+		res.end();
+	}
+	
+};
+
+var checkDuplicate = function(req,res){
+    console.log('/process/checkDuplicate 호출됨');
+
+    var paramId = req.body.id || req.query.id;
+    var paramPassword = req.body.password || req.query.password;
+    var paramName = req.body.name || req.query.name;
+
+    if (database) {
 
         database.UserModel.findById(paramId, function(err,results){//아이디 확인
             if(err){
@@ -73,34 +106,15 @@ var adduser = function(req, res) {
     
             if(results.length > 0){
                 console.log("아이디와 일치하는 사용자 찾음");
-                res.redirect('../public/adduser.html');
+                res.redirect( "../public/adduser_true.html");
             }
             else{
-                addUser(database, paramId, paramPassword, paramName, function(err, result) {
-                    if (err) {throw err;}
-                    
-                    // 결과 객체 확인하여 추가된 데이터 있으면 성공 응답 전송
-                    if (result) {
-                        console.dir(result);
-         
-                        res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
-                        res.write('<h2>사용자 추가 성공</h2>');
-                        res.end();
-                    } else {  // 결과 객체가 없으면 실패 응답 전송
-                        res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
-                        res.write('<h2>사용자 추가  실패</h2>');
-                        res.end();
-                    }
-                });
+                console.log("아이디와 일치하는 사용자 없음");
+                res.redirect( "../public/adduser_false.html");
             }
         });
-	} else {  // 데이터베이스 객체가 초기화되지 않은 경우 실패 응답 전송
-		res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
-		res.write('<h2>데이터베이스 연결 실패</h2>');
-		res.end();
-	}
-	
-};
+    }
+}
 
 var logout = function(req,res){
     console.log('/process/logout 호출됨');
@@ -109,12 +123,12 @@ var logout = function(req,res){
         req.session.destroy(function(err){
             if(err) {throw err;}
             console.log("logout 완료");
-            res.redirect('/public/login2.html');
+            res.redirect('/public/login.html');
         });
     }
     else{
         console.log("아직 로그인 안된 상태");
-        res.redirect('/public/login2.html');
+        res.redirect('/public/login.html');
     }
 };
 
@@ -219,3 +233,4 @@ module.exports.listuser = listuser;
 module.exports.logout = logout;
 module.exports.adduser = adduser;
 module.exports.login = login;
+module.exports.checkDuplicate = checkDuplicate;

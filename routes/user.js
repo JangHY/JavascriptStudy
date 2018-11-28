@@ -28,13 +28,15 @@ var login = function(req,res){
 
                 // 조회 결과에서 사용자 이름 확인
 				var username = docs[0].name;
-				
-				res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});
-				res.write('<h1>로그인 성공</h1>');
-				res.write('<div><p>사용자 아이디 : ' + paramId + '</p></div>');
-				res.write('<div><p>사용자 이름 : ' + username + '</p></div>');
-				res.write("<br><br><a href='/public/login.html'>다시 로그인하기</a>");
-				res.end();
+                
+                req.session.user = {
+                    id:paramId,
+                    name:username,
+                    authorized:true
+                };
+
+
+                res.redirect('/public/product.html');
 			
 			} else {  // 조회된 레코드가 없는 경우 실패 응답 전송
 				res.writeHead('200', {'Content-Type':'text/html;charset=utf8'});

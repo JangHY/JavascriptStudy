@@ -81,7 +81,7 @@ router.route('/process/setUserCookie').get(function(req,res){
     res.redirect('/process/showCookie');
 });
 
-router.route('/process/product').get(function(req,res){
+router.route('/').get(function(req,res){
     console.log('/process/product 호출됨');
     //session으로 로그인 되었는지 확인하여 분기
     if(req.session.user){
